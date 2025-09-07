@@ -9,4 +9,4 @@ jobs:
       - name: Push to Azure DevOps
         run: |
           git remote add azure https://futurefrontimmigrationgo.visualstudio.com/futurefrontimmigrationgo/_git/next-go-api
-          git push azure main --force
+          git push azure master --force
