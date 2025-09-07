@@ -30,4 +30,4 @@
               # git pull azuredevops main --rebase # Uncomment if you want to pull from Azure DevOps first
 
               # Push changes from GitHub to Azure DevOps
-              git push azuredevops main --force # Use --force with caution, consider alternatives like --force-with-lease
+              git push azuredevops master --force # Use --force with caution, consider alternatives like --force-with-lease
