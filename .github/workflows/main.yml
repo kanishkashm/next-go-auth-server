@@ -19,15 +19,9 @@
           - name: Sync to Azure DevOps
             env:
               AZURE_DEVOPS_PAT: ${{ secrets.AZURE_DEVOPS_PAT }}
-              AZURE_DEVOPS_ORG: dev.azure.com/FutureFrontImmigrationGo # e.g., dev.azure.com/your-org
-              AZURE_DEVOPS_PROJECT: futurefrontimmigrationgo # Your project name
-              AZURE_DEVOPS_REPO: next-go-api # The name of the repo in Azure DevOps
+              AZURE_DEVOPS_ORG: FutureFrontImmigrationGo
+              AZURE_DEVOPS_PROJECT: futurefrontimmigrationgo
+              AZURE_DEVOPS_REPO: next-go-api
             run: |
-              # Add Azure DevOps as a remote
               git remote add azuredevops https://user:${{ env.AZURE_DEVOPS_PAT }}@dev.azure.com/${{ env.AZURE_DEVOPS_ORG }}/${{ env.AZURE_DEVOPS_PROJECT }}/_git/${{ env.AZURE_DEVOPS_REPO }}
-
-              # Fetch and pull from Azure DevOps to ensure we have the latest state (optional, but recommended for two-way sync)
-              # git pull azuredevops main --rebase # Uncomment if you want to pull from Azure DevOps first
-
-              # Push changes from GitHub to Azure DevOps
-              git push azuredevops master --force # Use --force with caution, consider alternatives like --force-with-lease
+              git push azuredevops master --force
