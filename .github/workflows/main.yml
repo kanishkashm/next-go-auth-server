@@ -1,0 +1,29 @@
+    name: Sync GitHub to Azure DevOps
+
+    on:
+      push:
+        branches:
+          - master # or your desired branch to sync
+
+    jobs:
+      sync:
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@v4
+            with:
+               fetch-depth: 0  # Fetch full history
+
+          - name: Set up Git user
+            run: |
+              git config --global user.email "tndnirmalz@gmail.com"
+              git config --global user.name "GitHub Actions"
+
+          - name: Sync to Azure DevOps
+            env:
+              AZURE_DEVOPS_PAT: ${{ secrets.AZURE_DEVOPS_PAT }}
+              AZURE_DEVOPS_ORG: FutureFrontImmigrationGo
+              AZURE_DEVOPS_PROJECT: futurefrontimmigrationgo
+              AZURE_DEVOPS_REPO: next-go-api
+            run: |
+              git remote add azuredevops https://user:${{ env.AZURE_DEVOPS_PAT }}@dev.azure.com/${{ env.AZURE_DEVOPS_ORG }}/${{ env.AZURE_DEVOPS_PROJECT }}/_git/${{ env.AZURE_DEVOPS_REPO }}
+              git push azuredevops master --force
