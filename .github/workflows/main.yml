@@ -9,4 +9,4 @@ jobs:
       - name: Push to Azure DevOps
         run: |
            git remote set-url azure git@ssh.dev.azure.com:v3/FutureFrontImmigrationGo/futurefrontimmigrationgo/next-go-api
-=          git push azure master --force
+           git push azure master --force
