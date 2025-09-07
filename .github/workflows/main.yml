@@ -24,7 +24,7 @@
               AZURE_DEVOPS_REPO: next-go-api # The name of the repo in Azure DevOps
             run: |
               # Add Azure DevOps as a remote
-              git remote add azuredevops https://${{ env.AZURE_DEVOPS_ORG }}/${{ env.AZURE_DEVOPS_PROJECT }}/_git/${{ env.AZURE_DEVOPS_REPO }}
+              git remote add azuredevops https://user:${{ env.AZURE_DEVOPS_PAT }}@dev.azure.com/${{ env.AZURE_DEVOPS_ORG }}/${{ env.AZURE_DEVOPS_PROJECT }}/_git/${{ env.AZURE_DEVOPS_REPO }}
 
               # Fetch and pull from Azure DevOps to ensure we have the latest state (optional, but recommended for two-way sync)
               # git pull azuredevops main --rebase # Uncomment if you want to pull from Azure DevOps first
