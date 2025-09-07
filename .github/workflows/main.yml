@@ -1,0 +1,12 @@
+name: Sync to Azure DevOps
+on: [push]
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Push to Azure DevOps
+        run: |
+          git remote add azure https://futurefrontimmigrationgo.visualstudio.com/futurefrontimmigrationgo/_git/next-go-api.git
+          git push azure main --force
