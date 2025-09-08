@@ -2,7 +2,7 @@
 using Microsoft.EntityFrameworkCore;
 using System.Reflection.Emit;
 
-namespace next_go_api.Database
+namespace next_go_auth_server.Database
 {
     public class ApplicationDbContext : IdentityDbContext<User>
     {

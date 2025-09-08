@@ -1,4 +1,4 @@
-namespace next_go_api
+namespace next_go_auth_server
 {
     public class WeatherForecast
     {

@@ -1,0 +1,6 @@
+@next_go_auth_server_HostAddress = http://localhost:5155
+
+GET {{next_go_auth_server_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

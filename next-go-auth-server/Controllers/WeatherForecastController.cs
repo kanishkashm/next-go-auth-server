@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 
-namespace next_go_api.Controllers
+namespace next_go_auth_server.Controllers
 {
     [ApiController]
     [Route("[controller]")]

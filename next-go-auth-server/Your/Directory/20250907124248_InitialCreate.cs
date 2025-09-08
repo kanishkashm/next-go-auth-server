@@ -4,7 +4,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
-namespace next_go_api.Your.Directory
+namespace next_go_auth_server.Your.Directory
 {
     /// <inheritdoc />
     public partial class InitialCreate : Migration

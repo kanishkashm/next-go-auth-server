@@ -8,8 +8,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
-using next_go_api.Database;
-using next_go_api.Dtos.Users;
+using next_go_auth_server.Database;
+using next_go_auth_server.Dtos.Users;
 using System.ComponentModel.DataAnnotations;
 using System.Diagnostics;
 using System.IdentityModel.Tokens.Jwt;
@@ -17,7 +17,7 @@ using System.Security.Claims;
 using System.Text;
 using System.Text.Encodings.Web;
 
-namespace next_go_api.Extensions;
+namespace next_go_auth_server.Extensions;
 
 public static class IdentityApiEndpointRouteBuilderExtensions
 {

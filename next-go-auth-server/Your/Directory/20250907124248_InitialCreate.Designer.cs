@@ -2,18 +2,21 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
-using next_go_api.Database;
+using next_go_auth_server.Database;
 
 #nullable disable
 
-namespace next_go_api.Your.Directory
+namespace next_go_auth_server.Your.Directory
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250907124248_InitialCreate")]
+    partial class InitialCreate
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -155,7 +158,7 @@ namespace next_go_api.Your.Directory
                     b.ToTable("AspNetUserTokens", "identity");
                 });
 
-            modelBuilder.Entity("next_go_api.Database.User", b =>
+            modelBuilder.Entity("next_go_auth_server.Database.User", b =>
                 {
                     b.Property<string>("Id")
                         .HasColumnType("text");
@@ -240,7 +243,7 @@ namespace next_go_api.Your.Directory
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserClaim<string>", b =>
                 {
-                    b.HasOne("next_go_api.Database.User", null)
+                    b.HasOne("next_go_auth_server.Database.User", null)
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -249,7 +252,7 @@ namespace next_go_api.Your.Directory
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserLogin<string>", b =>
                 {
-                    b.HasOne("next_go_api.Database.User", null)
+                    b.HasOne("next_go_auth_server.Database.User", null)
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -264,7 +267,7 @@ namespace next_go_api.Your.Directory
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("next_go_api.Database.User", null)
+                    b.HasOne("next_go_auth_server.Database.User", null)
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -273,7 +276,7 @@ namespace next_go_api.Your.Directory
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserToken<string>", b =>
                 {
-                    b.HasOne("next_go_api.Database.User", null)
+                    b.HasOne("next_go_auth_server.Database.User", null)
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)

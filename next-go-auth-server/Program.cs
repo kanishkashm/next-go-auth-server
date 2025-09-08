@@ -2,8 +2,8 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using next_go_api.Database;
-using next_go_api.Extensions;
+using next_go_auth_server.Database;
+using next_go_auth_server.Extensions;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);

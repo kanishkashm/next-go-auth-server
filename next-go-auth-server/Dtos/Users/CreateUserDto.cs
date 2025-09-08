@@ -1,4 +1,4 @@
-﻿namespace next_go_api.Dtos.Users
+﻿namespace next_go_auth_server.Dtos.Users
 {
     public record CreateUserDto(
        string Email,

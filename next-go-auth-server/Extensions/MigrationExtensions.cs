@@ -1,6 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 
-namespace next_go_api.Extensions
+namespace next_go_auth_server.Extensions
 {
     public static class MigrationExtensions
     {

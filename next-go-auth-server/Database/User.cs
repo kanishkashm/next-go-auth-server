@@ -1,6 +1,6 @@
 ﻿using Microsoft.AspNetCore.Identity;
 
-namespace next_go_api.Database
+namespace next_go_auth_server.Database
 {
 
     public class User :IdentityUser 
