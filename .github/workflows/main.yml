@@ -23,7 +23,7 @@
               AZURE_DEVOPS_PAT: ${{ secrets.AZURE_DEVOPS_PAT }}
               AZURE_DEVOPS_ORG: FutureFrontImmigrationGo
               AZURE_DEVOPS_PROJECT: futurefrontimmigrationgo
-              AZURE_DEVOPS_REPO: next-go-api
+              AZURE_DEVOPS_REPO: next-go-auth-server
             run: |
               git remote add azuredevops https://user:${{ env.AZURE_DEVOPS_PAT }}@dev.azure.com/${{ env.AZURE_DEVOPS_ORG }}/${{ env.AZURE_DEVOPS_PROJECT }}/_git/${{ env.AZURE_DEVOPS_REPO }}
               git push azuredevops master --force
