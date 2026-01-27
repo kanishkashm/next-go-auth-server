@@ -1,9 +1,12 @@
-using Microsoft.AspNetCore.Authentication.JwtBearer;
+﻿using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using next_go_api.Seeders;
+using next_go_api.Services;
 using next_go_auth_server.Database;
 using next_go_auth_server.Extensions;
+using System;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -16,13 +19,14 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 
-builder.Services.AddAuthorization();
-builder.Services.AddAuthentication().AddCookie(IdentityConstants.ApplicationScheme);
-builder.Services.AddAuthentication(options =>
-{
-    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-})
+builder.Services
+    .AddIdentityCore<User>()
+    .AddRoles<IdentityRole>()
+    .AddEntityFrameworkStores<ApplicationDbContext>()
+    .AddSignInManager()
+    .AddDefaultTokenProviders();
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
         options.TokenValidationParameters = new TokenValidationParameters
@@ -33,13 +37,10 @@ builder.Services.AddAuthentication(options =>
             ValidateIssuerSigningKey = true,
             ValidIssuer = builder.Configuration["Jwt:Issuer"],
             ValidAudience = builder.Configuration["Jwt:Audience"],
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]))
+            IssuerSigningKey = new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!))
         };
     });
-
-builder.Services.AddIdentityCore<User>()
-        .AddEntityFrameworkStores<ApplicationDbContext>()
-        .AddApiEndpoints();
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
 {
@@ -61,7 +62,17 @@ if (app.Environment.IsDevelopment())
 }
 
 // Enable Identity APIs
-app.CustomMapIdentityApi<User>();
+//app.CustomMapIdentityApi<User>();
+
+using (var scope = app.Services.CreateScope())
+{
+    var services = scope.ServiceProvider;
+    await IdentityRoleSeeder.SeedRolesAsync(services);
+}
+
+await IdentitySeeder.SeedAdminUserAsync<User>(app.Services);
+builder.Services.AddAuthorization();
+
 
 app.UseHttpsRedirection();
 app.UseAuthentication();
