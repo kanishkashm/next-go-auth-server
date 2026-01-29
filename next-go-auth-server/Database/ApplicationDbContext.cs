@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using next_go_api.Models.Enums;
 
 namespace next_go_auth_server.Database
 {
@@ -18,6 +19,10 @@ namespace next_go_auth_server.Database
             builder.Entity<User>().Property(u => u.Initials).HasMaxLength(5);
 
             builder.HasDefaultSchema("identity");
+
+            builder.Entity<User>()
+                    .Property(u => u.Status)
+                    .HasDefaultValue(UserStatus.Pending);
         }
 
     }

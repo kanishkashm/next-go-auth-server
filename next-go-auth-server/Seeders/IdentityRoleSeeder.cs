@@ -8,7 +8,7 @@ namespace next_go_api.Seeders
         {
             var roleManager = serviceProvider.GetRequiredService<RoleManager<IdentityRole>>();
 
-            string[] roles = { "Admin", "DefaultUser" };
+            string[] roles = { "SuperAdmin", "DefaultUser" , "OrganizationUser" , "OrganizationAdmin" };
 
             foreach (var role in roles)
             {
