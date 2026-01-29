@@ -1,12 +1,13 @@
 ﻿using Microsoft.AspNetCore.Identity;
 using next_go_api.Models.Enums;
+using next_go_auth_server.Database;
 
 namespace next_go_api.Seeders
 {
     public static class IdentitySeeder
     {
         public static async Task SeedAdminUserAsync<TUser>(IServiceProvider serviceProvider)
-            where TUser : IdentityUser, new()
+            where TUser : User, new()
         {
             using var scope = serviceProvider.CreateScope();
 
@@ -14,8 +15,8 @@ namespace next_go_api.Seeders
             var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
 
             // 1️⃣ Ensure roles exist
-            if (!await roleManager.RoleExistsAsync(AppRoles.Admin))
-                await roleManager.CreateAsync(new IdentityRole(AppRoles.Admin));
+            if (!await roleManager.RoleExistsAsync(AppRoles.SuperAdmin))
+                await roleManager.CreateAsync(new IdentityRole(AppRoles.SuperAdmin));
 
             if (!await roleManager.RoleExistsAsync(AppRoles.DefaultUser))
                 await roleManager.CreateAsync(new IdentityRole(AppRoles.DefaultUser));
@@ -32,7 +33,8 @@ namespace next_go_api.Seeders
                 {
                     UserName = adminEmail,
                     Email = adminEmail,
-                    EmailConfirmed = true
+                    EmailConfirmed = true,
+                    Status = UserStatus.Active
                 };
 
                 var createResult = await userManager.CreateAsync(adminUser, adminPassword);
@@ -42,9 +44,9 @@ namespace next_go_api.Seeders
             }
 
             // 3️⃣ Assign Admin role
-            if (!await userManager.IsInRoleAsync(adminUser, AppRoles.Admin))
+            if (!await userManager.IsInRoleAsync(adminUser, AppRoles.SuperAdmin))
             {
-                await userManager.AddToRoleAsync(adminUser, AppRoles.Admin);
+                await userManager.AddToRoleAsync(adminUser, AppRoles.SuperAdmin);
             }
         }
     }

@@ -44,14 +44,13 @@ namespace next_go_api.Controllers
                 UserName = dto.Email,
                 Email = dto.Email,
                 FirstName = dto.FirstName,
-                LastName = dto.LastName
-            };
+                LastName = dto.LastName            };
 
             var result = await _userManager.CreateAsync(user, dto.Password);
             if (!result.Succeeded)
                 return BadRequest(result.Errors);
 
-            await _userManager.AddToRoleAsync(user, AppRoles.DefaultUser);
+            await _userManager.AddToRoleAsync(user, dto.UserRole);
 
             return Ok();
         }
