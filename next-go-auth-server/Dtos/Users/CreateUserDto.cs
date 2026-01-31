@@ -5,6 +5,7 @@
        string Password,
        string FirstName,
        string LastName,
-       string UserRole
+       string UserRole,
+       string? RequestedOrgName  // For OrganizationAdmin registrations
    );
 }

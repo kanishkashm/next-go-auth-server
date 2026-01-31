@@ -6,6 +6,7 @@ using next_go_api.Seeders;
 using next_go_api.Services;
 using next_go_auth_server.Database;
 using next_go_auth_server.Extensions;
+using next_go_auth_server.Seeders;
 using System;
 using System.Text;
 
@@ -48,8 +49,29 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
           builder.Configuration.GetConnectionString("DefaultConnection"),
           x => x.MigrationsHistoryTable("__EFMigrationsHistory", "identity")
       );
-    options.EnableSensitiveDataLogging();                        
+    options.EnableSensitiveDataLogging();
 });
+
+// Add CORS
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowFrontend", policy =>
+    {
+        policy
+            .WithOrigins(
+                "http://localhost:3000",   // Frontend
+                "https://localhost:3000",  // Frontend HTTPS
+                "http://localhost:7060",   // Next-Go API
+                "https://localhost:7060"   // Next-Go API HTTPS
+            )
+            .AllowAnyMethod()
+            .AllowAnyHeader()
+            .AllowCredentials();
+    });
+});
+
+builder.Services.AddAuthorization();
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.     
@@ -68,13 +90,17 @@ using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
     await IdentityRoleSeeder.SeedRolesAsync(services);
+    var context = services.GetRequiredService<ApplicationDbContext>();
+    await SubscriptionPlanSeeder.SeedAsync(context);
 }
 
 await IdentitySeeder.SeedAdminUserAsync<User>(app.Services);
-builder.Services.AddAuthorization();
-
 
 app.UseHttpsRedirection();
+
+// Use CORS (must be before Authentication)
+app.UseCors("AllowFrontend");
+
 app.UseAuthentication();
 app.UseAuthorization();
 
