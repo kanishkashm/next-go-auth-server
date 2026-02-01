@@ -10,6 +10,7 @@ namespace next_go_auth_server.Database
         public DbSet<Organization> Organizations { get; set; }
         public DbSet<SubscriptionPlan> SubscriptionPlans { get; set; }
         public DbSet<NormalUserQuota> NormalUserQuotas { get; set; }
+        public DbSet<RefreshToken> RefreshTokens { get; set; }
 
         public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
             : base(options)
@@ -76,6 +77,19 @@ namespace next_go_auth_server.Database
                 entity.HasOne(q => q.User)
                     .WithOne(u => u.Quota)
                     .HasForeignKey<NormalUserQuota>(q => q.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // RefreshToken configuration
+            builder.Entity<RefreshToken>(entity =>
+            {
+                entity.ToTable("RefreshTokens", "identity");
+                entity.HasKey(rt => rt.Id);
+                entity.Property(rt => rt.Token).IsRequired().HasMaxLength(500);
+                entity.HasIndex(rt => rt.Token).IsUnique();
+                entity.HasOne(rt => rt.User)
+                    .WithMany()
+                    .HasForeignKey(rt => rt.UserId)
                     .OnDelete(DeleteBehavior.Cascade);
             });
         }
