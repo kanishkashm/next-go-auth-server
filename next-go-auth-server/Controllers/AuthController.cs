@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.Data;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using next_go_api.Models.Enums;
 using next_go_auth_server.Database;
@@ -10,6 +11,7 @@ using next_go_auth_server.Dtos.Users;
 using System.ComponentModel.DataAnnotations;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace next_go_api.Controllers
@@ -21,15 +23,18 @@ namespace next_go_api.Controllers
         private readonly UserManager<User> _userManager;
         private readonly SignInManager<User> _signInManager;
         private readonly IConfiguration _config;
+        private readonly ApplicationDbContext _context;
 
         public AuthController(
             UserManager<User> userManager,
             SignInManager<User> signInManager,
-            IConfiguration config)
+            IConfiguration config,
+            ApplicationDbContext context)
         {
             _userManager = userManager;
             _signInManager = signInManager;
             _config = config;
+            _context = context;
         }
 
         // ---------------- REGISTER ----------------
@@ -113,7 +118,12 @@ namespace next_go_api.Controllers
             if (!result.Succeeded)
                 return Unauthorized(new { error = "Invalid credentials" });
 
-            var token = await GenerateJwtAsync(user);
+            // Generate access token
+            var accessToken = GenerateAccessToken(user, await _userManager.GetRolesAsync(user));
+
+            // Generate and store refresh token
+            var refreshToken = await GenerateRefreshTokenAsync(user.Id);
+
             var roles = await _userManager.GetRolesAsync(user);
 
             // Return token + user info (for frontend)
@@ -127,20 +137,81 @@ namespace next_go_api.Controllers
                     roles = roles.ToArray(),
                     createdAt = user.CreatedAt.ToString("o") // ISO 8601 format
                 },
-                accessToken = token.AccessToken,
-                expiresIn = token.ExpiresIn,
-                tokenType = token.TokenType,
-                refreshToken = token.RefreshToken
+                accessToken = accessToken.Token,
+                expiresIn = accessToken.ExpiresIn,
+                tokenType = "Bearer",
+                refreshToken = refreshToken
+            });
+        }
+
+        // ---------------- REFRESH TOKEN ----------------
+        [HttpPost("refresh")]
+        public async Task<ActionResult> RefreshToken([FromBody] RefreshTokenRequest request)
+        {
+            if (string.IsNullOrEmpty(request?.RefreshToken))
+                return BadRequest(new { error = "Refresh token is required" });
+
+            // Find the refresh token in database
+            var storedToken = await _context.RefreshTokens
+                .Include(rt => rt.User)
+                .FirstOrDefaultAsync(rt => rt.Token == request.RefreshToken);
+
+            if (storedToken == null)
+                return Unauthorized(new { error = "Invalid refresh token" });
+
+            if (!storedToken.IsActive)
+            {
+                // Token is expired or revoked
+                return Unauthorized(new { error = "Refresh token expired or revoked" });
+            }
+
+            var user = storedToken.User;
+            if (user == null)
+                return Unauthorized(new { error = "User not found" });
+
+            // Check if user is still active
+            if (user.Status != UserStatus.Active)
+                return Unauthorized(new { error = "User account is not active" });
+
+            // Revoke the old refresh token
+            storedToken.RevokedAt = DateTime.UtcNow;
+
+            // Generate new tokens
+            var roles = await _userManager.GetRolesAsync(user);
+            var newAccessToken = GenerateAccessToken(user, roles);
+            var newRefreshToken = await GenerateRefreshTokenAsync(user.Id);
+
+            // Mark old token as replaced
+            storedToken.ReplacedByToken = newRefreshToken;
+            await _context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                accessToken = newAccessToken.Token,
+                expiresIn = newAccessToken.ExpiresIn,
+                tokenType = "Bearer",
+                refreshToken = newRefreshToken
             });
         }
 
         // ---------------- LOGOUT (JWT) ----------------
-        [Authorize]
         [HttpPost("logout")]
-        public IActionResult Logout()
+        public async Task<IActionResult> Logout([FromBody] LogoutRequest? request)
         {
-            // JWT logout = client deletes token
-            return Ok();
+            // Revoke refresh token if provided
+            if (!string.IsNullOrEmpty(request?.RefreshToken))
+            {
+                var storedToken = await _context.RefreshTokens
+                    .FirstOrDefaultAsync(rt => rt.Token == request.RefreshToken);
+
+                if (storedToken != null && storedToken.IsActive)
+                {
+                    storedToken.RevokedAt = DateTime.UtcNow;
+                    await _context.SaveChangesAsync();
+                }
+            }
+
+            return Ok(new { message = "Logged out successfully" });
         }
 
         // ---------------- GET CURRENT USER ----------------
@@ -191,16 +262,14 @@ namespace next_go_api.Controllers
         }
 
         // ---------------- TOKEN GENERATION ----------------
-        private async Task<AccessTokenResponse> GenerateJwtAsync(User user)
+        private (string Token, int ExpiresIn) GenerateAccessToken(User user, IList<string> roles)
         {
-            var roles = await _userManager.GetRolesAsync(user);
-
             var claims = new List<Claim>
-        {
-            new(JwtRegisteredClaimNames.Sub, user.Id),
-            new(JwtRegisteredClaimNames.Email, user.Email!),
-            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
-        };
+            {
+                new(JwtRegisteredClaimNames.Sub, user.Id),
+                new(JwtRegisteredClaimNames.Email, user.Email!),
+                new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+            };
 
             claims.AddRange(roles.Select(r => new Claim(ClaimTypes.Role, r)));
 
@@ -218,13 +287,48 @@ namespace next_go_api.Controllers
                 expires: expires,
                 signingCredentials: creds);
 
-            return new AccessTokenResponse
+            return (
+                Token: new JwtSecurityTokenHandler().WriteToken(token),
+                ExpiresIn: (int)(expires - DateTime.UtcNow).TotalSeconds
+            );
+        }
+
+        private async Task<string> GenerateRefreshTokenAsync(string userId)
+        {
+            // Generate a secure random token
+            var randomBytes = new byte[64];
+            using var rng = RandomNumberGenerator.Create();
+            rng.GetBytes(randomBytes);
+            var refreshToken = Convert.ToBase64String(randomBytes);
+
+            // Get refresh token expiry from config (default 7 days)
+            var refreshExpireDays = Convert.ToInt32(_config["Jwt:RefreshExpireDays"] ?? "7");
+
+            // Create and store the refresh token
+            var tokenEntity = new RefreshToken
             {
-                AccessToken = new JwtSecurityTokenHandler().WriteToken(token),
-                ExpiresIn = (int)(expires - DateTime.UtcNow).TotalSeconds,
-                RefreshToken = ""
+                Id = Guid.NewGuid(),
+                UserId = userId,
+                Token = refreshToken,
+                ExpiresAt = DateTime.UtcNow.AddDays(refreshExpireDays),
+                CreatedAt = DateTime.UtcNow
             };
+
+            _context.RefreshTokens.Add(tokenEntity);
+            await _context.SaveChangesAsync();
+
+            return refreshToken;
         }
     }
 
+    // Request DTOs
+    public class RefreshTokenRequest
+    {
+        public string? RefreshToken { get; set; }
+    }
+
+    public class LogoutRequest
+    {
+        public string? RefreshToken { get; set; }
+    }
 }
