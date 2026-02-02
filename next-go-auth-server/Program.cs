@@ -79,9 +79,11 @@ var app = builder.Build();
 //{
     app.UseSwagger();
     app.UseSwaggerUI();
+if (app.Environment.IsDevelopment())
+{
 
     app.ApplyMigrations();
-//}
+}
 
 // Enable Identity APIs
 //app.CustomMapIdentityApi<User>();
