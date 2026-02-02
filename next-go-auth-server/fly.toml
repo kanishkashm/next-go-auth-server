@@ -1,10 +1,10 @@
-# fly.toml app configuration file generated for next-go-auth-server on 2026-02-02T02:26:30Z
+# fly.toml app configuration file generated for next-go-auth-server on 2026-02-02T02:48:01Z
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
 app = 'next-go-auth-server'
-primary_region = 'ams'
+primary_region = 'bom'
 
 [build]
 
