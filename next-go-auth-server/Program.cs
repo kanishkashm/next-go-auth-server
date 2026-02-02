@@ -61,6 +61,7 @@ builder.Services.AddCors(options =>
             .WithOrigins(
                 "http://localhost:3000",   // Frontend
                 "https://localhost:3000",  // Frontend HTTPS
+                "https://next-go.fly.dev",
                 "http://localhost:7060",   // Next-Go API
                 "https://localhost:7060"   // Next-Go API HTTPS
             )
@@ -77,8 +78,8 @@ var app = builder.Build();
 // Configure the HTTP request pipeline.     
 //if (app.Environment.IsDevelopment())
 //{
-    app.UseSwagger();
-    app.UseSwaggerUI();
+app.UseSwagger();
+app.UseSwaggerUI();
 if (app.Environment.IsDevelopment())
 {
 
