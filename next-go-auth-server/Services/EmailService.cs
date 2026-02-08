@@ -385,4 +385,224 @@ public class EmailService : IEmailService
 
         await SendEmailAsync(email, subject, GetEmailWrapper(content));
     }
+
+    // =====================================================
+    // Upgrade Request Notifications
+    // =====================================================
+
+    public async Task SendUpgradeRequestSubmittedToOrgAsync(
+        string email,
+        string firstName,
+        string organizationName,
+        string currentPlan,
+        string requestedPlan)
+    {
+        var subject = $"Upgrade Request Submitted - {organizationName}";
+        var content = $@"
+            <p>Hi {firstName},</p>
+
+            <div class='info-box'>
+                <h3 style='margin-top: 0; color: #0c5460;'>📤 Upgrade Request Submitted</h3>
+                <p style='margin-bottom: 0;'>Your upgrade request for <strong>{organizationName}</strong> has been submitted successfully.</p>
+            </div>
+
+            <div class='highlight-box'>
+                <h3 style='margin-top: 0;'>Request Details:</h3>
+                <table style='width: 100%; border-collapse: collapse;'>
+                    <tr>
+                        <td style='padding: 8px 0; border-bottom: 1px solid #eee;'><strong>Current Plan:</strong></td>
+                        <td style='padding: 8px 0; border-bottom: 1px solid #eee;'>{currentPlan}</td>
+                    </tr>
+                    <tr>
+                        <td style='padding: 8px 0;'><strong>Requested Plan:</strong></td>
+                        <td style='padding: 8px 0;'>{requestedPlan}</td>
+                    </tr>
+                </table>
+            </div>
+
+            <p>Our team will review your request and get back to you shortly. You will receive an email notification once your request has been processed.</p>
+
+            <p>You can check the status of your request at any time by visiting your organization dashboard:</p>
+
+            <a href='{_frontendUrl}/org/dashboard' class='button'>View Dashboard</a>
+        ";
+
+        await SendEmailAsync(email, subject, GetEmailWrapper(content));
+    }
+
+    public async Task SendUpgradeRequestNotificationToAdminAsync(
+        string adminEmail,
+        string adminName,
+        string organizationName,
+        string orgAdminName,
+        string currentPlan,
+        string requestedPlan,
+        string reason)
+    {
+        var upgradeRequestsUrl = $"{_frontendUrl}/admin/upgrade-requests";
+        var subject = $"🔔 New Upgrade Request: {organizationName}";
+        var content = $@"
+            <p>Hi {adminName},</p>
+
+            <div class='warning-box'>
+                <h3 style='margin-top: 0; color: #856404;'>📋 New Upgrade Request Pending Review</h3>
+                <p style='margin-bottom: 0;'>An organization has requested a plan upgrade and is awaiting your approval.</p>
+            </div>
+
+            <div class='highlight-box'>
+                <h3 style='margin-top: 0;'>Request Details:</h3>
+                <table style='width: 100%; border-collapse: collapse;'>
+                    <tr>
+                        <td style='padding: 8px 0; border-bottom: 1px solid #eee;'><strong>Organization:</strong></td>
+                        <td style='padding: 8px 0; border-bottom: 1px solid #eee;'>{organizationName}</td>
+                    </tr>
+                    <tr>
+                        <td style='padding: 8px 0; border-bottom: 1px solid #eee;'><strong>Requested By:</strong></td>
+                        <td style='padding: 8px 0; border-bottom: 1px solid #eee;'>{orgAdminName}</td>
+                    </tr>
+                    <tr>
+                        <td style='padding: 8px 0; border-bottom: 1px solid #eee;'><strong>Current Plan:</strong></td>
+                        <td style='padding: 8px 0; border-bottom: 1px solid #eee;'>{currentPlan}</td>
+                    </tr>
+                    <tr>
+                        <td style='padding: 8px 0; border-bottom: 1px solid #eee;'><strong>Requested Plan:</strong></td>
+                        <td style='padding: 8px 0; border-bottom: 1px solid #eee;'>{requestedPlan}</td>
+                    </tr>
+                    <tr>
+                        <td style='padding: 8px 0;' colspan='2'><strong>Reason:</strong><br/>{reason}</td>
+                    </tr>
+                </table>
+            </div>
+
+            <p>Please review this request and take appropriate action:</p>
+
+            <a href='{upgradeRequestsUrl}' class='button'>Review Upgrade Requests</a>
+
+            <p>If the button doesn't work, copy and paste this link into your browser:</p>
+            <p><a href='{upgradeRequestsUrl}'>{upgradeRequestsUrl}</a></p>
+        ";
+
+        await SendEmailAsync(adminEmail, subject, GetEmailWrapper(content));
+    }
+
+    public async Task SendUpgradeRequestApprovedAsync(
+        string email,
+        string firstName,
+        string organizationName,
+        string oldPlan,
+        string newPlan)
+    {
+        var subject = $"🎉 Upgrade Approved - {organizationName}";
+        var content = $@"
+            <p>Hi {firstName},</p>
+
+            <div class='success-box'>
+                <h3 style='margin-top: 0; color: #155724;'>✅ Your Upgrade Request Has Been Approved!</h3>
+                <p style='margin-bottom: 0;'>Great news! Your organization <strong>{organizationName}</strong> has been upgraded successfully.</p>
+            </div>
+
+            <div class='highlight-box'>
+                <h3 style='margin-top: 0;'>Plan Change:</h3>
+                <table style='width: 100%; border-collapse: collapse;'>
+                    <tr>
+                        <td style='padding: 8px 0; border-bottom: 1px solid #eee;'><strong>Previous Plan:</strong></td>
+                        <td style='padding: 8px 0; border-bottom: 1px solid #eee;'>{oldPlan}</td>
+                    </tr>
+                    <tr>
+                        <td style='padding: 8px 0;'><strong>New Plan:</strong></td>
+                        <td style='padding: 8px 0; color: #28a745; font-weight: bold;'>{newPlan} ✨</td>
+                    </tr>
+                </table>
+            </div>
+
+            <p>Your new plan benefits are now active! Enjoy your increased limits and features.</p>
+
+            <a href='{_frontendUrl}/org/dashboard' class='button'>View Your Dashboard</a>
+        ";
+
+        await SendEmailAsync(email, subject, GetEmailWrapper(content));
+    }
+
+    public async Task SendUpgradeRequestRejectedAsync(
+        string email,
+        string firstName,
+        string organizationName,
+        string requestedPlan,
+        string rejectionReason)
+    {
+        var subject = $"Upgrade Request Update - {organizationName}";
+        var content = $@"
+            <p>Hi {firstName},</p>
+
+            <div class='danger-box'>
+                <h3 style='margin-top: 0; color: #721c24;'>Upgrade Request Not Approved</h3>
+                <p style='margin-bottom: 0;'>We regret to inform you that your upgrade request for <strong>{organizationName}</strong> to the <strong>{requestedPlan}</strong> plan has not been approved at this time.</p>
+            </div>
+
+            <div class='highlight-box'>
+                <p><strong>Reason:</strong></p>
+                <p>{rejectionReason}</p>
+            </div>
+
+            <p>If you have any questions about this decision or would like to discuss your upgrade options, please contact our support team.</p>
+
+            <p>You can reach us at:</p>
+            <ul>
+                <li>Email: support@cktravels.com</li>
+            </ul>
+
+            <p>You're welcome to submit a new upgrade request in the future.</p>
+
+            <a href='{_frontendUrl}/org/upgrade' class='button'>View Available Plans</a>
+        ";
+
+        await SendEmailAsync(email, subject, GetEmailWrapper(content));
+    }
+
+    public async Task SendPlanChangedByAdminAsync(
+        string email,
+        string firstName,
+        string organizationName,
+        string oldPlan,
+        string newPlan,
+        string? adminReason)
+    {
+        var isUpgrade = true; // Could be determined by comparing plan features
+        var subject = $"Plan Update - {organizationName}";
+        var content = $@"
+            <p>Hi {firstName},</p>
+
+            <div class='info-box'>
+                <h3 style='margin-top: 0; color: #0c5460;'>📢 Your Organization's Plan Has Been Updated</h3>
+                <p style='margin-bottom: 0;'>An administrator has updated the subscription plan for <strong>{organizationName}</strong>.</p>
+            </div>
+
+            <div class='highlight-box'>
+                <h3 style='margin-top: 0;'>Plan Change Details:</h3>
+                <table style='width: 100%; border-collapse: collapse;'>
+                    <tr>
+                        <td style='padding: 8px 0; border-bottom: 1px solid #eee;'><strong>Previous Plan:</strong></td>
+                        <td style='padding: 8px 0; border-bottom: 1px solid #eee;'>{oldPlan}</td>
+                    </tr>
+                    <tr>
+                        <td style='padding: 8px 0;'><strong>New Plan:</strong></td>
+                        <td style='padding: 8px 0;'>{newPlan}</td>
+                    </tr>
+                    {(string.IsNullOrEmpty(adminReason) ? "" : $@"
+                    <tr>
+                        <td style='padding: 8px 0; border-top: 1px solid #eee;' colspan='2'><strong>Reason:</strong><br/>{adminReason}</td>
+                    </tr>
+                    ")}
+                </table>
+            </div>
+
+            <p>Your plan limits have been updated accordingly. Visit your dashboard to see your current usage and limits.</p>
+
+            <a href='{_frontendUrl}/org/dashboard' class='button'>View Your Dashboard</a>
+
+            <p>If you have any questions about this change, please contact our support team.</p>
+        ";
+
+        await SendEmailAsync(email, subject, GetEmailWrapper(content));
+    }
 }

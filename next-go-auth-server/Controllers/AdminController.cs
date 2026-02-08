@@ -433,6 +433,90 @@ public class AdminController : ControllerBase
         }
     }
 
+    [HttpPost("organizations/{orgId}/change-plan")]
+    public async Task<IActionResult> ChangeOrganizationPlan(Guid orgId, [FromBody] ChangePlanRequest request)
+    {
+        try
+        {
+            var org = await _context.Organizations
+                .Include(o => o.Owner)
+                .Include(o => o.SubscriptionPlan)
+                .FirstOrDefaultAsync(o => o.Id == orgId);
+
+            if (org == null)
+                return NotFound(new { error = "Organization not found" });
+
+            var newPlan = await _context.SubscriptionPlans.FindAsync(request.NewPlanId);
+            if (newPlan == null)
+                return BadRequest(new { error = "New plan not found" });
+
+            if (!newPlan.IsActive)
+                return BadRequest(new { error = "New plan is not active" });
+
+            if (org.SubscriptionPlanId == request.NewPlanId)
+                return BadRequest(new { error = "Organization is already on this plan" });
+
+            var oldPlan = org.SubscriptionPlan;
+
+            // Check if downgrade would exceed limits
+            var currentMemberCount = await _userManager.Users
+                .CountAsync(u => u.OrganizationId == orgId);
+
+            if (newPlan.MaxUsers < currentMemberCount)
+                return BadRequest(new
+                {
+                    error = $"Cannot downgrade: organization has {currentMemberCount} members but new plan only allows {newPlan.MaxUsers}",
+                    currentMemberCount,
+                    newPlanMaxUsers = newPlan.MaxUsers
+                });
+
+            // Update the organization's plan
+            org.SubscriptionPlanId = request.NewPlanId;
+            org.UpdatedAt = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Organization {OrgName} plan changed from {OldPlan} to {NewPlan} by admin. Reason: {Reason}",
+                org.Name, oldPlan.DisplayName, newPlan.DisplayName, request.Reason ?? "No reason provided");
+
+            // Send email notification to organization owner
+            try
+            {
+                if (org.Owner != null)
+                {
+                    await _emailService.SendPlanChangedByAdminAsync(
+                        org.Owner.Email!,
+                        org.Owner.FirstName ?? "User",
+                        org.Name,
+                        oldPlan.DisplayName,
+                        newPlan.DisplayName,
+                        request.Reason);
+                }
+            }
+            catch (Exception emailEx)
+            {
+                _logger.LogError(emailEx, "Failed to send plan change email to {Email}", org.Owner?.Email);
+            }
+
+            return Ok(new
+            {
+                message = "Organization plan changed successfully",
+                organization = new
+                {
+                    org.Id,
+                    org.Name,
+                    oldPlan = new { oldPlan.Id, oldPlan.Name, oldPlan.DisplayName },
+                    newPlan = new { newPlan.Id, newPlan.Name, newPlan.DisplayName }
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error changing organization plan {OrgId}", orgId);
+            return StatusCode(500, new { error = "Failed to change organization plan" });
+        }
+    }
+
     // ============================================
     // USER MANAGEMENT
     // ============================================
@@ -599,4 +683,10 @@ public class RejectOrgAdminRequest
 public class DeactivateRequest
 {
     public string Reason { get; set; } = string.Empty;
+}
+
+public class ChangePlanRequest
+{
+    public Guid NewPlanId { get; set; }
+    public string? Reason { get; set; }
 }
