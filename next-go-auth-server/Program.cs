@@ -7,6 +7,7 @@ using next_go_api.Services;
 using next_go_auth_server.Database;
 using next_go_auth_server.Extensions;
 using next_go_auth_server.Seeders;
+using next_go_auth_server.Services;
 using System;
 using System.Text;
 
@@ -72,6 +73,9 @@ builder.Services.AddCors(options =>
 });
 
 builder.Services.AddAuthorization();
+
+// Register Email Service
+builder.Services.AddScoped<IEmailService, EmailService>();
 
 var app = builder.Build();
 

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using next_go_auth_server.Database;
+using next_go_auth_server.Services;
 using next_go_api.Models.Enums;
 using System.IdentityModel.Tokens.Jwt;
 
@@ -16,15 +17,18 @@ public class OrganizationController : ControllerBase
     private readonly ApplicationDbContext _context;
     private readonly UserManager<User> _userManager;
     private readonly ILogger<OrganizationController> _logger;
+    private readonly IEmailService _emailService;
 
     public OrganizationController(
         ApplicationDbContext context,
         UserManager<User> userManager,
-        ILogger<OrganizationController> logger)
+        ILogger<OrganizationController> logger,
+        IEmailService emailService)
     {
         _context = context;
         _userManager = userManager;
         _logger = logger;
+        _emailService = emailService;
     }
 
     private async Task<User?> GetCurrentUserAsync()
@@ -219,6 +223,7 @@ public class OrganizationController : ControllerBase
                 Initials = $"{request.FirstName?[0]}{request.LastName?[0]}",
                 Status = UserStatus.Active,
                 OrganizationId = currentUser.OrganizationId,
+                MustChangePassword = true, // Force password change on first login
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -234,7 +239,11 @@ public class OrganizationController : ControllerBase
             // Send invitation email
             try
             {
-                await SendInvitationEmailAsync(newUser.Email, org.Name, tempPassword, newUser.FirstName);
+                await _emailService.SendInvitationEmailAsync(
+                    newUser.Email!,
+                    newUser.FirstName ?? "User",
+                    org.Name,
+                    tempPassword);
             }
             catch (Exception emailEx)
             {
@@ -463,96 +472,6 @@ public class OrganizationController : ControllerBase
 
         // Shuffle the password
         return new string(password.OrderBy(x => random.Next()).ToArray());
-    }
-
-    private async Task SendInvitationEmailAsync(string email, string organizationName, string tempPassword, string firstName)
-    {
-        var configuration = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
-        var smtpHost = configuration["Email:SmtpHost"];
-        var smtpPort = int.Parse(configuration["Email:SmtpPort"] ?? "587");
-        var smtpUsername = configuration["Email:SmtpUsername"];
-        var smtpPassword = configuration["Email:SmtpPassword"];
-        var fromEmail = configuration["Email:FromEmail"];
-        var fromName = configuration["Email:FromName"] ?? "CKHRC Immigration Platform";
-
-        if (string.IsNullOrEmpty(smtpHost) || string.IsNullOrEmpty(fromEmail))
-        {
-            _logger.LogWarning("Email configuration is missing. Skipping email notification.");
-            return;
-        }
-
-        var loginUrl = configuration["App:FrontendUrl"] ?? "http://localhost:3000";
-
-        var subject = $"You've been invited to join {organizationName}";
-        var body = $@"
-<!DOCTYPE html>
-<html>
-<head>
-    <style>
-        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
-        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-        .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
-        .content {{ background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }}
-        .credentials {{ background: white; padding: 20px; border-left: 4px solid #667eea; margin: 20px 0; }}
-        .button {{ display: inline-block; padding: 12px 30px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }}
-        .footer {{ text-align: center; margin-top: 30px; color: #666; font-size: 12px; }}
-        .warning {{ background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; }}
-    </style>
-</head>
-<body>
-    <div class='container'>
-        <div class='header'>
-            <h1>Welcome to CKHRC Immigration Platform</h1>
-        </div>
-        <div class='content'>
-            <p>Hi {firstName},</p>
-
-            <p>You've been invited to join <strong>{organizationName}</strong> on the CKHRC Immigration Platform.</p>
-
-            <div class='credentials'>
-                <h3>Your Login Credentials:</h3>
-                <p><strong>Email:</strong> {email}</p>
-                <p><strong>Temporary Password:</strong> <code style='background: #f0f0f0; padding: 5px 10px; border-radius: 3px; font-size: 16px;'>{tempPassword}</code></p>
-            </div>
-
-            <div class='warning'>
-                <p><strong>⚠️ Important Security Notice:</strong></p>
-                <p>This is a temporary password. For security reasons, you will be required to change your password on your first login.</p>
-            </div>
-
-            <p>Click the button below to log in and get started:</p>
-
-            <a href='{loginUrl}' class='button'>Log In Now</a>
-
-            <p>If the button doesn't work, copy and paste this link into your browser:</p>
-            <p><a href='{loginUrl}'>{loginUrl}</a></p>
-
-            <p>If you have any questions or need assistance, please contact your organization administrator.</p>
-
-            <p>Best regards,<br>CKHRC Immigration Team</p>
-        </div>
-        <div class='footer'>
-            <p>This is an automated email. Please do not reply directly to this message.</p>
-        </div>
-    </div>
-</body>
-</html>";
-
-        using var client = new System.Net.Mail.SmtpClient(smtpHost, smtpPort);
-        client.Credentials = new System.Net.NetworkCredential(smtpUsername, smtpPassword);
-        client.EnableSsl = true;
-
-        var message = new System.Net.Mail.MailMessage
-        {
-            From = new System.Net.Mail.MailAddress(fromEmail, fromName),
-            Subject = subject,
-            Body = body,
-            IsBodyHtml = true
-        };
-        message.To.Add(email);
-
-        await client.SendMailAsync(message);
-        _logger.LogInformation("Invitation email sent to {Email}", email);
     }
 }
 
