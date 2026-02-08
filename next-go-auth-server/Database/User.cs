@@ -21,6 +21,13 @@ namespace next_go_auth_server.Database
         // NEW: For Normal Users quota tracking
         public NormalUserQuota? Quota { get; set; }
 
+        // Deactivation tracking
+        public DateTime? DeactivatedAt { get; set; }
+        public string? DeactivationReason { get; set; }
+
+        // Force password change on first login (for invited users)
+        public bool MustChangePassword { get; set; } = false;
+
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     }
 }
