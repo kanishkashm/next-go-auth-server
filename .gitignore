@@ -362,3 +362,5 @@ MigrationBackup/
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
 # /next-go-auth-server/Migrations
+/next-go-auth-server/Migrations
+/.gitignore
