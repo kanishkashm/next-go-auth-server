@@ -13,6 +13,11 @@ public class SubscriptionPlan
     // Features (stored as JSON string)
     public string FeaturesJson { get; set; } = "[]";
 
+    // Pricing & Display
+    public decimal? MonthlyPrice { get; set; }
+    public int DisplayOrder { get; set; } = 0;
+    public bool IsPopular { get; set; } = false;
+
     public bool IsActive { get; set; } = true;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

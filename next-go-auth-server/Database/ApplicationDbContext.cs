@@ -11,6 +11,7 @@ namespace next_go_auth_server.Database
         public DbSet<SubscriptionPlan> SubscriptionPlans { get; set; }
         public DbSet<NormalUserQuota> NormalUserQuotas { get; set; }
         public DbSet<RefreshToken> RefreshTokens { get; set; }
+        public DbSet<UpgradeRequest> UpgradeRequests { get; set; }
 
         public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
             : base(options)
@@ -91,6 +92,43 @@ namespace next_go_auth_server.Database
                     .WithMany()
                     .HasForeignKey(rt => rt.UserId)
                     .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // UpgradeRequest configuration
+            builder.Entity<UpgradeRequest>(entity =>
+            {
+                entity.ToTable("UpgradeRequests", "identity");
+                entity.HasKey(ur => ur.Id);
+                entity.Property(ur => ur.Reason).HasMaxLength(1000);
+                entity.Property(ur => ur.RejectionReason).HasMaxLength(500);
+
+                entity.HasOne(ur => ur.Organization)
+                    .WithMany()
+                    .HasForeignKey(ur => ur.OrganizationId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(ur => ur.CurrentPlan)
+                    .WithMany()
+                    .HasForeignKey(ur => ur.CurrentPlanId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(ur => ur.RequestedPlan)
+                    .WithMany()
+                    .HasForeignKey(ur => ur.RequestedPlanId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(ur => ur.RequestedBy)
+                    .WithMany()
+                    .HasForeignKey(ur => ur.RequestedById)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(ur => ur.ProcessedBy)
+                    .WithMany()
+                    .HasForeignKey(ur => ur.ProcessedById)
+                    .OnDelete(DeleteBehavior.SetNull);
+
+                entity.HasIndex(ur => ur.OrganizationId);
+                entity.HasIndex(ur => ur.Status);
             });
         }
     }

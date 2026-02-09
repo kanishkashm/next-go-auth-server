@@ -20,4 +20,16 @@ public interface IEmailService
     // Organization Status Changes
     Task SendOrganizationDeactivatedEmailAsync(string email, string firstName, string organizationName, string reason);
     Task SendOrganizationReactivatedEmailAsync(string email, string firstName, string organizationName);
+
+    // Upgrade Request Notifications
+    Task SendUpgradeRequestSubmittedToOrgAsync(string email, string firstName, string organizationName,
+        string currentPlan, string requestedPlan);
+    Task SendUpgradeRequestNotificationToAdminAsync(string adminEmail, string adminName,
+        string organizationName, string orgAdminName, string currentPlan, string requestedPlan, string reason);
+    Task SendUpgradeRequestApprovedAsync(string email, string firstName, string organizationName,
+        string oldPlan, string newPlan);
+    Task SendUpgradeRequestRejectedAsync(string email, string firstName, string organizationName,
+        string requestedPlan, string rejectionReason);
+    Task SendPlanChangedByAdminAsync(string email, string firstName, string organizationName,
+        string oldPlan, string newPlan, string? adminReason);
 }
