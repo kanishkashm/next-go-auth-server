@@ -8,7 +8,8 @@ namespace next_go_api.Dtos.Users
         public string OldPassword { get; set; } = string.Empty;
 
         [Required]
-        [MinLength(6, ErrorMessage = "New password must be at least 6 characters long.")]
+        [MinLength(8, ErrorMessage = "New password must be at least 8 characters long.")]
+        [RegularExpression(@"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$", ErrorMessage = "New password must include uppercase and lowercase letters and at least one number.")]
         public string NewPassword { get; set; } = string.Empty;
 
         [Required]
