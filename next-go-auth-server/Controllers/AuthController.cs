@@ -3,13 +3,16 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.Data;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using next_go_api.Models.Enums;
 using next_go_auth_server.Database;
 using next_go_auth_server.Dtos.Users;
+using next_go_auth_server.Services;
 using System.ComponentModel.DataAnnotations;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace next_go_api.Controllers
@@ -21,15 +24,24 @@ namespace next_go_api.Controllers
         private readonly UserManager<User> _userManager;
         private readonly SignInManager<User> _signInManager;
         private readonly IConfiguration _config;
+        private readonly ApplicationDbContext _context;
+        private readonly IEmailService _emailService;
+        private readonly ILogger<AuthController> _logger;
 
         public AuthController(
             UserManager<User> userManager,
             SignInManager<User> signInManager,
-            IConfiguration config)
+            IConfiguration config,
+            ApplicationDbContext context,
+            IEmailService emailService,
+            ILogger<AuthController> logger)
         {
             _userManager = userManager;
             _signInManager = signInManager;
             _config = config;
+            _context = context;
+            _emailService = emailService;
+            _logger = logger;
         }
 
         // ---------------- REGISTER ----------------
@@ -39,12 +51,22 @@ namespace next_go_api.Controllers
             if (!new EmailAddressAttribute().IsValid(dto.Email))
                 return BadRequest("Invalid email");
 
+            // Determine status based on role
+            var status = dto.UserRole == "OrganizationAdmin"
+                ? UserStatus.Pending
+                : UserStatus.Active;
+
             var user = new User
             {
                 UserName = dto.Email,
                 Email = dto.Email,
                 FirstName = dto.FirstName,
-                LastName = dto.LastName            };
+                LastName = dto.LastName,
+                Initials = $"{dto.FirstName?[0]}{dto.LastName?[0]}",
+                Status = status,
+                RequestedOrgName = dto.UserRole == "OrganizationAdmin" ? dto.RequestedOrgName : null,
+                CreatedAt = DateTime.UtcNow
+            };
 
             var result = await _userManager.CreateAsync(user, dto.Password);
             if (!result.Succeeded)
@@ -52,40 +74,246 @@ namespace next_go_api.Controllers
 
             await _userManager.AddToRoleAsync(user, dto.UserRole);
 
-            return Ok();
+            // Create quota for Normal Users (DefaultUser)
+            if (dto.UserRole == "DefaultUser")
+            {
+                var context = HttpContext.RequestServices.GetRequiredService<ApplicationDbContext>();
+                await context.NormalUserQuotas.AddAsync(new NormalUserQuota
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = user.Id,
+                    CvUploadsUsed = 0,
+                    CvUploadsLimit = 2,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                });
+                await context.SaveChangesAsync();
+            }
+
+            // Notify SuperAdmins when an OrgAdmin registers
+            if (dto.UserRole == "OrganizationAdmin")
+            {
+                try
+                {
+                    // Get all SuperAdmin users
+                    var superAdmins = await _userManager.GetUsersInRoleAsync("SuperAdmin");
+                    var applicantName = $"{dto.FirstName} {dto.LastName}";
+
+                    foreach (var superAdmin in superAdmins)
+                    {
+                        if (!string.IsNullOrEmpty(superAdmin.Email))
+                        {
+                            try
+                            {
+                                await _emailService.SendNewOrgRegistrationNotificationAsync(
+                                    superAdmin.Email,
+                                    superAdmin.FirstName ?? "Admin",
+                                    applicantName,
+                                    dto.Email,
+                                    dto.RequestedOrgName ?? "Unknown Organization");
+
+                                _logger.LogInformation(
+                                    "Sent new org registration notification to SuperAdmin {Email} for org {OrgName}",
+                                    superAdmin.Email, dto.RequestedOrgName);
+                            }
+                            catch (Exception emailEx)
+                            {
+                                _logger.LogError(emailEx,
+                                    "Failed to send notification to SuperAdmin {Email}", superAdmin.Email);
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to notify SuperAdmins about new org registration");
+                    // Don't fail registration if email notification fails
+                }
+            }
+
+            return Ok(new
+            {
+                message = "User registered successfully",
+                status = status.ToString(),
+                email = user.Email
+            });
         }
 
         // ---------------- LOGIN ----------------
         [HttpPost("login")]
-        public async Task<ActionResult<AccessTokenResponse>> Login(LoginRequest dto)
+        public async Task<ActionResult> Login(LoginRequest dto)
         {
             var user = await _userManager.FindByEmailAsync(dto.Email);
             if (user == null)
-                return Unauthorized();
+                return Unauthorized(new { error = "Invalid credentials" });
+
+            // Check if user is active
+            if (user.Status != UserStatus.Active)
+            {
+                return Unauthorized(new
+                {
+                    error = "Account not active",
+                    status = user.Status.ToString(),
+                    message = user.Status == UserStatus.Pending
+                        ? "Your account is pending approval. Please wait for administrator approval."
+                        : "Your account has been deactivated. Please contact support."
+                });
+            }
+
+            // Check if user's organization is active (if they belong to one)
+            if (user.OrganizationId.HasValue)
+            {
+                var org = await _context.Organizations.FindAsync(user.OrganizationId.Value);
+                if (org != null && !org.IsActive)
+                {
+                    return Unauthorized(new
+                    {
+                        error = "Organization deactivated",
+                        status = "OrganizationInactive",
+                        message = "Your organization has been deactivated. Please contact your administrator or support."
+                    });
+                }
+            }
 
             var result = await _signInManager.CheckPasswordSignInAsync(
                 user, dto.Password, lockoutOnFailure: true);
 
             if (!result.Succeeded)
-                return Unauthorized();
+                return Unauthorized(new { error = "Invalid credentials" });
 
-            var token = await GenerateJwtAsync(user);
-            return Ok(token);
+            // Generate access token
+            var accessToken = GenerateAccessToken(user, await _userManager.GetRolesAsync(user));
+
+            // Generate and store refresh token
+            var refreshToken = await GenerateRefreshTokenAsync(user.Id);
+
+            var roles = await _userManager.GetRolesAsync(user);
+
+            // Return token + user info (for frontend)
+            return Ok(new
+            {
+                user = new
+                {
+                    id = user.Id,
+                    email = user.Email,
+                    fullName = $"{user.FirstName} {user.LastName}",
+                    roles = roles.ToArray(),
+                    createdAt = user.CreatedAt.ToString("o") // ISO 8601 format
+                },
+                accessToken = accessToken.Token,
+                expiresIn = accessToken.ExpiresIn,
+                tokenType = "Bearer",
+                refreshToken = refreshToken,
+                mustChangePassword = user.MustChangePassword // Force password change flag
+            });
+        }
+
+        // ---------------- REFRESH TOKEN ----------------
+        [HttpPost("refresh")]
+        public async Task<ActionResult> RefreshToken([FromBody] RefreshTokenRequest request)
+        {
+            if (string.IsNullOrEmpty(request?.RefreshToken))
+                return BadRequest(new { error = "Refresh token is required" });
+
+            // Find the refresh token in database
+            var storedToken = await _context.RefreshTokens
+                .Include(rt => rt.User)
+                .FirstOrDefaultAsync(rt => rt.Token == request.RefreshToken);
+
+            if (storedToken == null)
+                return Unauthorized(new { error = "Invalid refresh token" });
+
+            if (!storedToken.IsActive)
+            {
+                // Token is expired or revoked
+                return Unauthorized(new { error = "Refresh token expired or revoked" });
+            }
+
+            var user = storedToken.User;
+            if (user == null)
+                return Unauthorized(new { error = "User not found" });
+
+            // Check if user is still active
+            if (user.Status != UserStatus.Active)
+                return Unauthorized(new { error = "User account is not active" });
+
+            // Check if user's organization is active (if they belong to one)
+            if (user.OrganizationId.HasValue)
+            {
+                var org = await _context.Organizations.FindAsync(user.OrganizationId.Value);
+                if (org != null && !org.IsActive)
+                    return Unauthorized(new { error = "Organization has been deactivated" });
+            }
+
+            // Revoke the old refresh token
+            storedToken.RevokedAt = DateTime.UtcNow;
+
+            // Generate new tokens
+            var roles = await _userManager.GetRolesAsync(user);
+            var newAccessToken = GenerateAccessToken(user, roles);
+            var newRefreshToken = await GenerateRefreshTokenAsync(user.Id);
+
+            // Mark old token as replaced
+            storedToken.ReplacedByToken = newRefreshToken;
+            await _context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                accessToken = newAccessToken.Token,
+                expiresIn = newAccessToken.ExpiresIn,
+                tokenType = "Bearer",
+                refreshToken = newRefreshToken
+            });
         }
 
         // ---------------- LOGOUT (JWT) ----------------
-        [Authorize]
         [HttpPost("logout")]
-        public IActionResult Logout()
+        public async Task<IActionResult> Logout([FromBody] LogoutRequest? request)
         {
-            // JWT logout = client deletes token
-            return Ok();
+            // Revoke refresh token if provided
+            if (!string.IsNullOrEmpty(request?.RefreshToken))
+            {
+                var storedToken = await _context.RefreshTokens
+                    .FirstOrDefaultAsync(rt => rt.Token == request.RefreshToken);
+
+                if (storedToken != null && storedToken.IsActive)
+                {
+                    storedToken.RevokedAt = DateTime.UtcNow;
+                    await _context.SaveChangesAsync();
+                }
+            }
+
+            return Ok(new { message = "Logged out successfully" });
         }
 
-        // ---------------- TOKEN GENERATION ----------------
-        private async Task<AccessTokenResponse> GenerateJwtAsync(User user)
+        // ---------------- GET CURRENT USER ----------------
+        [HttpGet("~/api/me")]
+        public async Task<IActionResult> GetMe()
         {
-            var roles = await _userManager.GetRolesAsync(user);
+            // Temporarily allow unauthenticated access for debugging
+            var authHeader = Request.Headers["Authorization"].FirstOrDefault();
+            if (string.IsNullOrEmpty(authHeader))
+            {
+                return Unauthorized(new { error = "No authorization header" });
+            }
+
+            // For now, decode the JWT manually to extract user ID
+            var token = authHeader.Replace("Bearer ", "");
+            var handler = new JwtSecurityTokenHandler();
+
+            try
+            {
+                var jwtToken = handler.ReadJwtToken(token);
+                var userId = jwtToken.Claims.FirstOrDefault(c => c.Type == JwtRegisteredClaimNames.Sub)?.Value;
+
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized(new { error = "Invalid token - no user ID" });
+
+                var user = await _userManager.FindByIdAsync(userId);
+                if (user == null)
+                    return NotFound(new { error = "User not found" });
+
+                var roles = await _userManager.GetRolesAsync(user);
 
                 return Ok(new
                 {
@@ -112,6 +340,9 @@ namespace next_go_api.Controllers
         {
             if (string.IsNullOrEmpty(request.CurrentPassword) || string.IsNullOrEmpty(request.NewPassword))
                 return BadRequest(new { error = "Current password and new password are required" });
+
+            if (request.NewPassword.Length < 8)
+                return BadRequest(new { error = "New password must be at least 8 characters long" });
 
             // Get current user from token
             var authHeader = Request.Headers["Authorization"].FirstOrDefault();
@@ -225,11 +456,11 @@ namespace next_go_api.Controllers
         private (string Token, int ExpiresIn) GenerateAccessToken(User user, IList<string> roles)
         {
             var claims = new List<Claim>
-        {
-            new(JwtRegisteredClaimNames.Sub, user.Id),
-            new(JwtRegisteredClaimNames.Email, user.Email!),
-            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
-        };
+            {
+                new(JwtRegisteredClaimNames.Sub, user.Id),
+                new(JwtRegisteredClaimNames.Email, user.Email!),
+                new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+            };
 
             claims.AddRange(roles.Select(r => new Claim(ClaimTypes.Role, r)));
 
@@ -247,11 +478,31 @@ namespace next_go_api.Controllers
                 expires: expires,
                 signingCredentials: creds);
 
-            return new AccessTokenResponse
+            return (
+                Token: new JwtSecurityTokenHandler().WriteToken(token),
+                ExpiresIn: (int)(expires - DateTime.UtcNow).TotalSeconds
+            );
+        }
+
+        private async Task<string> GenerateRefreshTokenAsync(string userId)
+        {
+            // Generate a secure random token
+            var randomBytes = new byte[64];
+            using var rng = RandomNumberGenerator.Create();
+            rng.GetBytes(randomBytes);
+            var refreshToken = Convert.ToBase64String(randomBytes);
+
+            // Get refresh token expiry from config (default 7 days)
+            var refreshExpireDays = Convert.ToInt32(_config["Jwt:RefreshExpireDays"] ?? "7");
+
+            // Create and store the refresh token
+            var tokenEntity = new RefreshToken
             {
-                AccessToken = new JwtSecurityTokenHandler().WriteToken(token),
-                ExpiresIn = (int)(expires - DateTime.UtcNow).TotalSeconds,
-                RefreshToken = ""
+                Id = Guid.NewGuid(),
+                UserId = userId,
+                Token = refreshToken,
+                ExpiresAt = DateTime.UtcNow.AddDays(refreshExpireDays),
+                CreatedAt = DateTime.UtcNow
             };
 
             _context.RefreshTokens.Add(tokenEntity);
@@ -272,15 +523,20 @@ namespace next_go_api.Controllers
         public string? RefreshToken { get; set; }
     }
 
-    public class ChangePasswordRequest
+        public class ChangePasswordRequest
+        {
+            [Required]
+            public string CurrentPassword { get; set; } = string.Empty;
+
+            [Required]
+            [MinLength(8, ErrorMessage = "New password must be at least 8 characters long.")]
+            [RegularExpression(@"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$", ErrorMessage = "New password must include uppercase and lowercase letters and at least one number.")]
+            public string NewPassword { get; set; } = string.Empty;
+        }
+
+    public class UpdateProfileRequest
     {
-        [Required]
-        public string CurrentPassword { get; set; } = string.Empty;
-
-        [Required]
-        [MinLength(8, ErrorMessage = "New password must be at least 8 characters long.")]
-        [RegularExpression(@"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$", ErrorMessage = "New password must include uppercase and lowercase letters and at least one number.")]
-        public string NewPassword { get; set; } = string.Empty;
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
     }
-
 }
