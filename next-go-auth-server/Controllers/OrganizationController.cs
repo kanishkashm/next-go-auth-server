@@ -74,6 +74,9 @@ public class OrganizationController : ControllerBase
             if (org == null)
                 return NotFound(new { error = "Organization not found" });
 
+            if (!org.IsActive)
+                return BadRequest(new { error = "Organization is deactivated. Please contact support." });
+
             return Ok(new
             {
                 id = org.Id,
@@ -116,7 +119,7 @@ public class OrganizationController : ControllerBase
                 return NotFound(new { error = "Organization not found" });
 
             var members = await _userManager.Users
-                .Where(u => u.OrganizationId == user.OrganizationId.Value)
+                .Where(u => u.OrganizationId == user.OrganizationId.Value && u.Status == UserStatus.Active)
                 .ToListAsync();
 
             var membersList = new List<object>();
@@ -161,7 +164,7 @@ public class OrganizationController : ControllerBase
                 return NotFound(new { error = "Organization not found" });
 
             var memberCount = await _userManager.Users
-                .CountAsync(u => u.OrganizationId == user.OrganizationId.Value);
+                .CountAsync(u => u.OrganizationId == user.OrganizationId.Value && u.Status == UserStatus.Active);
 
             // Get recent uploads (if CVUpload table exists)
             // For now, return basic stats
@@ -200,7 +203,7 @@ public class OrganizationController : ControllerBase
 
             // Check member limit
             var currentMemberCount = await _userManager.Users
-                .CountAsync(u => u.OrganizationId == currentUser.OrganizationId.Value);
+                .CountAsync(u => u.OrganizationId == currentUser.OrganizationId.Value && u.Status == UserStatus.Active);
 
             if (currentMemberCount >= org.SubscriptionPlan.MaxUsers)
                 return BadRequest(new { error = $"Organization has reached maximum user limit ({org.SubscriptionPlan.MaxUsers})" });
@@ -208,7 +211,58 @@ public class OrganizationController : ControllerBase
             // Check if user already exists
             var existingUser = await _userManager.FindByEmailAsync(request.Email);
             if (existingUser != null)
-                return BadRequest(new { error = "User with this email already exists" });
+            {
+                // Same organization + inactive user: reactivate instead of blocking invite
+                if (existingUser.OrganizationId == currentUser.OrganizationId &&
+                    existingUser.Status == UserStatus.Inactive)
+                {
+                    existingUser.FirstName = request.FirstName;
+                    existingUser.LastName = request.LastName;
+                    existingUser.Initials = $"{request.FirstName?[0]}{request.LastName?[0]}";
+                    existingUser.Status = UserStatus.Active;
+                    existingUser.MustChangePassword = false;
+
+                    var updateResult = await _userManager.UpdateAsync(existingUser);
+                    if (!updateResult.Succeeded)
+                        return BadRequest(new { error = "Failed to reactivate user", details = updateResult.Errors });
+
+                    var roles = await _userManager.GetRolesAsync(existingUser);
+                    if (roles.Contains("OrganizationAdmin"))
+                    {
+                        await _userManager.RemoveFromRoleAsync(existingUser, "OrganizationAdmin");
+                    }
+                    if (!roles.Contains("OrganizationUser"))
+                    {
+                        await _userManager.AddToRoleAsync(existingUser, "OrganizationUser");
+                    }
+
+                    _logger.LogInformation("User {Email} reactivated in organization {OrgId} by {AdminEmail}",
+                        existingUser.Email, currentUser.OrganizationId, currentUser.Email);
+
+                    return Ok(new
+                    {
+                        message = "User reactivated successfully.",
+                        user = new
+                        {
+                            id = existingUser.Id,
+                            email = existingUser.Email,
+                            fullName = $"{existingUser.FirstName} {existingUser.LastName}"
+                        },
+                        reactivated = true
+                    });
+                }
+
+                // Same organization and already active
+                if (existingUser.OrganizationId == currentUser.OrganizationId &&
+                    existingUser.Status == UserStatus.Active)
+                    return BadRequest(new { error = "User is already an active member of your organization" });
+
+                // Different organization (or non-org account)
+                return BadRequest(new
+                {
+                    error = "This email is already registered to another account or organization. Please use a different email."
+                });
+            }
 
             // Generate temporary password
             var tempPassword = GenerateTemporaryPassword();
@@ -292,8 +346,33 @@ public class OrganizationController : ControllerBase
             var org = await _context.Organizations
                 .FirstOrDefaultAsync(o => o.Id == currentUser.OrganizationId.Value);
 
+            if (org != null && !org.IsActive)
+                return BadRequest(new { error = "Organization is deactivated. Please contact support." });
+
             if (org != null && memberToRemove.Id == org.OwnerId)
                 return BadRequest(new { error = "Cannot remove organization owner" });
+
+            var memberRoles = await _userManager.GetRolesAsync(memberToRemove);
+            if (memberRoles.Contains("OrganizationAdmin"))
+            {
+                var activeMembers = await _userManager.Users
+                    .Where(u => u.OrganizationId == currentUser.OrganizationId.Value && u.Status == UserStatus.Active)
+                    .ToListAsync();
+
+                var activeAdminCount = 0;
+                foreach (var member in activeMembers)
+                {
+                    var roles = await _userManager.GetRolesAsync(member);
+                    if (roles.Contains("OrganizationAdmin"))
+                        activeAdminCount++;
+
+                    if (activeAdminCount > 1)
+                        break;
+                }
+
+                if (activeAdminCount <= 1)
+                    return BadRequest(new { error = "Cannot remove the last active organization admin" });
+            }
 
             // Set user status to Inactive
             memberToRemove.Status = UserStatus.Inactive;

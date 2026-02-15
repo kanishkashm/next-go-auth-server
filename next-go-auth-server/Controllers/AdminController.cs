@@ -344,6 +344,21 @@ public class AdminController : ControllerBase
             org.DeactivationReason = request.Reason;
             org.UpdatedAt = DateTime.UtcNow;
 
+            // Revoke active refresh tokens for all users in the deactivated organization
+            var orgUserIds = await _userManager.Users
+                .Where(u => u.OrganizationId == orgId)
+                .Select(u => u.Id)
+                .ToListAsync();
+
+            var activeTokens = await _context.RefreshTokens
+                .Where(rt => orgUserIds.Contains(rt.UserId) && rt.RevokedAt == null)
+                .ToListAsync();
+
+            foreach (var token in activeTokens)
+            {
+                token.RevokedAt = DateTime.UtcNow;
+            }
+
             await _context.SaveChangesAsync();
 
             _logger.LogInformation("Organization {OrgName} deactivated. Reason: {Reason}",
@@ -460,7 +475,7 @@ public class AdminController : ControllerBase
 
             // Check if downgrade would exceed limits
             var currentMemberCount = await _userManager.Users
-                .CountAsync(u => u.OrganizationId == orgId);
+                .CountAsync(u => u.OrganizationId == orgId && u.Status == UserStatus.Active);
 
             if (newPlan.MaxUsers < currentMemberCount)
                 return BadRequest(new
