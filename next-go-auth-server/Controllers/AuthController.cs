@@ -523,11 +523,16 @@ namespace next_go_api.Controllers
         public string? RefreshToken { get; set; }
     }
 
-    public class ChangePasswordRequest
-    {
-        public string CurrentPassword { get; set; } = string.Empty;
-        public string NewPassword { get; set; } = string.Empty;
-    }
+        public class ChangePasswordRequest
+        {
+            [Required]
+            public string CurrentPassword { get; set; } = string.Empty;
+
+            [Required]
+            [MinLength(8, ErrorMessage = "New password must be at least 8 characters long.")]
+            [RegularExpression(@"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$", ErrorMessage = "New password must include uppercase and lowercase letters and at least one number.")]
+            public string NewPassword { get; set; } = string.Empty;
+        }
 
     public class UpdateProfileRequest
     {

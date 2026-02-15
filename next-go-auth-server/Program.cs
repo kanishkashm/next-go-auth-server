@@ -22,7 +22,14 @@ builder.Services.AddSwaggerGen();
 
 
 builder.Services
-    .AddIdentityCore<User>()
+    .AddIdentityCore<User>(options =>
+    {
+        options.Password.RequiredLength = 8;
+        options.Password.RequireLowercase = true;
+        options.Password.RequireUppercase = true;
+        options.Password.RequireDigit = true;
+        options.Password.RequireNonAlphanumeric = false;
+    })
     .AddRoles<IdentityRole>()
     .AddEntityFrameworkStores<ApplicationDbContext>()
     .AddSignInManager()
